@@ -1,0 +1,16 @@
+ansible:
+  hosts:
+    ansible_machine:
+      ansible_host: 10.0.8.83
+      local_ssh_key: prometheus-key.pem
+      os_user: ubuntu
+
+clusters:
+  children:
+    cyberlab_services:
+      hosts:
+        ronin_website:
+          ansible_host: https://ronin.uoa.cloud
+          probes:
+            - module: http_2xx
+

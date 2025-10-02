@@ -1,0 +1,36 @@
+ansible:
+  hosts:
+    ansible_machine:
+      ansible_host: 10.0.8.83        # Prometheus VM IP
+      local_ssh_key: prometheus-key.pem
+      main_jump_ssh_key: ronin-jumpbox-key.pem
+      os_user: ubuntu
+      ssh_subnet: 10.0.8.*
+
+clusters:
+  children:
+    cyberlab_services:
+      hosts:
+        hospital:
+          ansible_host: 10.0.8.101
+          os_user: ubuntu
+        webserver:
+          ansible_host: 10.0.8.102
+          os_user: ubuntu
+        database:
+          ansible_host: 10.0.8.103
+          os_user: ubuntu
+        mailserver:
+          ansible_host: 10.0.8.104
+          os_user: ubuntu
+        firewall:
+          ansible_host: 10.0.8.105
+          os_user: ubuntu
+      vars:
+        auto_deploy: true
+        branch: Ronin-Test
+        install_prometheus: true
+        install_blackbox_exporter: true
+        prometheus_instance: ansible_machine
+        prometheus_ip: 10.0.8.83
+       
