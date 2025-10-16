@@ -1,0 +1,8 @@
+cachet_db_password: !vault |
+  <ansible-vault-encrypted string>
+
+cachet_app_key: !vault |
+  <ansible-vault-encrypted base64 32-byte>
+
+cachet_api_token: !vault |
+  <ansible-vault-encrypted token>

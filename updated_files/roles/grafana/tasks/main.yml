@@ -1,0 +1,55 @@
+- name: Add Grafana APT key
+  ansible.builtin.apt_key:
+    url: https://apt.grafana.com/gpg.key
+    state: present
+
+- name: Add Grafana repo
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.grafana.com stable main"
+    state: present
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    update_cache: true
+    state: present
+
+- name: Ensure Grafana started/enabled
+  ansible.builtin.service:
+    name: grafana-server
+    state: started
+    enabled: true
+
+# --- Provisioning: Prometheus datasource
+- name: Ensure provisioning dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+
+- name: Provision Prometheus datasource
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    mode: '0644'
+  notify: Restart grafana
+
+# --- Provisioning: Dashboards
+- name: Provision dashboards (loader)
+  ansible.builtin.template:
+    src: dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/dashboards.yml
+    mode: '0644'
+  notify: Restart grafana
+
+- name: Ship dashboard JSONs
+  ansible.builtin.copy:
+    src: "dashboards/"
+    dest: "/var/lib/grafana/dashboards/"
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  notify: Restart grafana

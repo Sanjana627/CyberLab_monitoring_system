@@ -1,0 +1,16 @@
+- name: Create glue dir
+  ansible.builtin.file:
+    path: /opt/cachet-glue
+    state: directory
+    mode: '0755'
+
+- name: Template docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/cachet-glue/docker-compose.yml
+    mode: '0644'
+
+- name: Bring up glue
+  community.docker.docker_compose:
+    project_src: /opt/cachet-glue
+    state: present

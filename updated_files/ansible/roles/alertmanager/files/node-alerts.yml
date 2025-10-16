@@ -1,0 +1,11 @@
+groups:
+- name: node-alerts
+  rules:
+  - alert: NodeExporterDown
+    expr: up{job="node_exporters"} == 0
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Node exporter down ({{ $labels.instance }})"
+      description: "No scrape from node_exporter for 2m."

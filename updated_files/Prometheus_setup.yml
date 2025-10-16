@@ -1,0 +1,360 @@
+---
+# Install common dependencies
+- name: Install common dependencies on Monitoring VM
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Ensure required packages are installed
+      apt:
+        name:
+          - wget
+          - tar
+          - curl
+          - git
+          - golang
+        state: present
+        update_cache: yes
+
+# Install Prometheus 3.6.0
+- name: Install Prometheus 3.6.0
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Create /opt/prometheus directory
+      file:
+        path: /opt/prometheus
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Download Prometheus 3.6.0
+      get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v3.6.0/prometheus-3.6.0.linux-amd64.tar.gz"
+        dest: "/tmp/prometheus.tar.gz"
+
+    - name: Extract Prometheus
+      unarchive:
+        src: "/tmp/prometheus.tar.gz"
+        dest: "/opt/prometheus"
+        remote_src: True
+        creates: "/opt/prometheus/prometheus-3.6.0.linux-amd64"
+
+    - name: Move Prometheus binaries
+      copy:
+        src: "/opt/prometheus/prometheus-3.6.0.linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+      loop:
+        - prometheus
+        - promtool
+
+    - name: Create Prometheus directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      loop:
+        - /etc/prometheus
+        - /var/lib/prometheus
+
+    - name: Deploy Prometheus configuration with Jinja template
+      template:
+        src: templates/prometheus.yml.j2
+        dest: /etc/prometheus/prometheus.yml
+      notify:
+        - Restart Prometheus
+
+    # === NEW: rules dir + starter rule ===
+    - name: Ensure /etc/prometheus/rules exists
+      file:
+        path: /etc/prometheus/rules
+        state: directory
+        mode: '0755'
+
+    - name: Ship starter node alerts
+      copy:
+        src: files/node-alerts.yml     # create files/node-alerts.yml next to this playbook
+        dest: /etc/prometheus/rules/node-alerts.yml
+        mode: '0644'
+      notify: Restart Prometheus
+    # === /NEW ===
+
+    - name: Create Prometheus systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=ubuntu
+          Group=ubuntu
+          Type=simple
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --storage.tsdb.path=/var/lib/prometheus \
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+      notify: Restart Prometheus
+
+    - name: Reload systemd and start Prometheus
+      systemd:
+        daemon_reload: yes
+        name: prometheus
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Restart Prometheus
+      systemd:
+        name: prometheus
+        state: restarted
+
+# Install Node Exporter 1.9.1
+- name: Install Node Exporter 1.9.1
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Download Node Exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz"
+        dest: "/tmp/node_exporter.tar.gz"
+
+    - name: Extract Node Exporter
+      unarchive:
+        src: "/tmp/node_exporter.tar.gz"
+        dest: "/opt"
+        remote_src: True
+
+    - name: Move Node Exporter binary
+      copy:
+        src: "/opt/node_exporter-1.9.1.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        mode: '0755'
+
+    - name: Create Node Exporter systemd service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User: ubuntu
+          ExecStart=/usr/local/bin/node_exporter
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd and start Node Exporter
+      systemd:
+        daemon_reload: yes
+        name: node_exporter
+        enabled: yes
+        state: started
+
+# Install Blackbox Exporter 0.27.0
+- name: Install Blackbox Exporter 0.27.0
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Download Blackbox Exporter
+      get_url:
+        url: "https://github.com/prometheus/blackbox_exporter/releases/download/v0.27.0/blackbox_exporter-0.27.0.linux-amd64.tar.gz"
+        dest: "/tmp/blackbox_exporter.tar.gz"
+
+    - name: Extract Blackbox Exporter
+      unarchive:
+        src: "/tmp/blackbox_exporter.tar.gz"
+        dest: "/opt"
+        remote_src: True
+
+    - name: Move Blackbox Exporter binary
+      copy:
+        src: "/opt/blackbox_exporter-0.27.0.linux-amd64/blackbox_exporter"
+        dest: /usr/local/bin/blackbox_exporter
+        mode: '0755'
+
+    - name: Create Blackbox Exporter config directory
+      file:
+        path: /etc/blackbox_exporter
+        state: directory
+        mode: '0755'
+
+    - name: Create default blackbox.yml config
+      copy:
+        dest: /etc/blackbox_exporter/blackbox.yml
+        content: |
+          modules:
+            http_2xx:
+              prober: http
+              timeout: 5s
+              http:
+                valid_http_versions: ["HTTP/1.1"]
+                method: GET
+                follow_redirects: true
+                enable_http2: false
+                preferred_ip_protocol: ip4
+
+    - name: Create Blackbox Exporter systemd service
+      copy:
+        dest: /etc/systemd/system/blackbox_exporter.service
+        content: |
+          [Unit]
+          Description=Blackbox Exporter
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=ubuntu
+          ExecStart=/usr/local/bin/blackbox_exporter \
+            --config.file=/etc/blackbox_exporter/blackbox.yml \
+            --web.listen-address=":9115"
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd and start Blackbox Exporter
+      systemd:
+        daemon_reload: yes
+        name: blackbox_exporter
+        enabled: yes
+        state: started
+
+# Install Alertmanager 0.28.1 (fixed & complete)
+- name: Install Alertmanager 0.28.1
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Download Alertmanager
+      get_url:
+        url: "https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz"
+        dest: "/tmp/alertmanager.tar.gz"
+
+    - name: Extract Alertmanager
+      unarchive:
+        src: "/tmp/alertmanager.tar.gz"
+        dest: "/opt"
+        remote_src: True
+
+    - name: Move Alertmanager binaries
+      copy:
+        src: "/opt/alertmanager-0.28.1.linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+      loop:
+        - alertmanager
+        - amtool
+
+    - name: Create Alertmanager config directory
+      file:
+        path: /etc/alertmanager
+        state: directory
+        mode: '0755'
+
+    - name: Create Alertmanager data directory
+      file:
+        path: /var/lib/alertmanager
+        state: directory
+        mode: '0755'
+
+    - name: Create default alertmanager.yml
+      copy:
+        dest: /etc/alertmanager/alertmanager.yml
+        mode: '0644'
+        content: |
+          global:
+            resolve_timeout: 5m
+          route:
+            group_by: ['alertname','instance']
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 1h
+            receiver: 'default'
+          receivers:
+            - name: 'default'
+          # When you add Cachet glue on :8888, switch to:
+          # receivers:
+          #   - name: 'cachet-webhook'
+          #     webhook_configs:
+          #       - url: 'http://127.0.0.1:8888/'
+
+    - name: Create Alertmanager systemd service
+      copy:
+        dest: /etc/systemd/system/alertmanager.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Alertmanager
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=ubuntu
+          Group=ubuntu
+          ExecStart=/usr/local/bin/alertmanager \
+            --config.file=/etc/alertmanager/alertmanager.yml \
+            --storage.path=/var/lib/alertmanager \
+            --web.listen-address=:9093
+          Restart=always
+          RestartSec=5s
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Daemon-reload
+        - Restart alertmanager
+
+    - name: Start and enable Alertmanager
+      systemd:
+        name: alertmanager
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Daemon-reload
+      systemd:
+        daemon_reload: true
+
+    - name: Restart alertmanager
+      systemd:
+        name: alertmanager
+        state: restarted
+
+# === ROLES SECTION (append below your current plays) ===
+
+# Grafana (uses your roles/grafana/*)
+- name: Grafana
+  hosts: monitoring
+  become: yes
+  roles:
+    - grafana
+
+# Docker + Cachet (uses roles/docker + roles/cachet)
+- name: Status page (Docker + Cachet)
+  hosts: monitoring
+  become: yes
+  roles:
+    - docker
+    - cachet
+
+# Cachet glue (uses roles/cachet_glue)
+- name: Alerting glue (prometheus-cachet-glue)
+  hosts: monitoring
+  become: yes
+  roles:
+    - cachet_glue

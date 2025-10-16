@@ -1,0 +1,11 @@
+services:
+  cachet_glue:
+    image: ghcr.io/matrix-org/prometheus-cachet-glue:latest
+    restart: unless-stopped
+    environment:
+      CACHET_BASE_URL: http://10.0.8.126:8080
+      CACHET_API_TOKEN: {{ cachet_api_token }}
+      LISTEN_ADDRESS: 0.0.0.0
+      LISTEN_PORT: "8888"
+    ports:
+      - "8888:8888"

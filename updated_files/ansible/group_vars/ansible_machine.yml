@@ -1,0 +1,6 @@
+cachet_db_password: uOkTPFDvko1mcXXRSOXBKA==
+cachet_app_key: 2fIy3tkOqP0eJTsqQhe6jcCA0XZLDkgYiBTsUi+Yxs0=
+cachet_app_url: "http://localhost:8000"
+cachet_api_token: !vault |
+  <ansible-vault-encrypted token>
+

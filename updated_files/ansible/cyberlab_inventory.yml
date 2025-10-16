@@ -1,0 +1,20 @@
+all:
+  children:
+    monitoring:
+      hosts:
+        prometheus_machine:
+          ansible_host: 10.0.8.126
+          ansible_user: ubuntu
+
+  vars:
+    monitoring:
+      prometheus_machine:
+        ipv4: "10.0.8.126"
+        ports: [22, 80, 8080, 9100]
+        uri: "monitoring.uoa.cloud"
+
+    blackbox_targets:
+      - "https://monitoring.uoa.cloud"
+      - "https://www.google.com"
+
+

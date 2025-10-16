@@ -1,0 +1,61 @@
+---
+- name: Ensure Docker engine & compose plugin are present (skip if in separate docker role)
+  apt:
+    name:
+      - docker.io
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+
+- name: Ensure python docker bindings (needed by community.docker)
+  apt:
+    name: python3-docker
+    state: present
+
+- name: Create app dir
+  file:
+    path: /opt/cachet
+    state: directory
+    mode: "0755"
+
+- name: Render docker-compose.yml
+  template:
+    src: templates/docker-compose.yml.j2
+    dest: /opt/cachet/docker-compose.yml
+    mode: "0644"
+
+- name: Bring up Cachet stack
+  community.docker.docker_compose:
+    project_src: /opt/cachet
+    state: present
+  register: cachet_up
+
+# --- APP_KEY bootstrap (only when not provided) ---
+- name: Generate APP_KEY inside container when not set
+  community.docker.docker_container_exec:
+    container: cachet
+    command: php /config/www/artisan key:generate --show
+  register: gen_key
+  changed_when: gen_key.rc == 0
+  failed_when: false
+  when: cachet_app_key is not defined or cachet_app_key|trim == ''
+
+- name: Persist generated APP_KEY into container .env
+  community.docker.docker_container_exec:
+    container: cachet
+    command: /bin/bash -lc "sed -i 's/^APP_KEY=.*/APP_KEY={{ gen_key.stdout | trim | quote | regex_replace(\"'\", \"'\\\\''\") }}/' /config/www/.env || echo 'APP_KEY={{ gen_key.stdout | trim }}' >> /config/www/.env"
+  when:
+    - cachet_app_key is not defined or cachet_app_key|trim == ''
+    - gen_key.stdout is defined
+    - gen_key.stdout | trim != ''
+
+- name: Restart cachet to apply generated key
+  community.docker.docker_compose:
+    project_src: /opt/cachet
+    state: present
+    restarted: true
+  when:
+    - cachet_app_key is not defined or cachet_app_key|trim == ''
+    - gen_key.stdout is defined
+    - gen_key.stdout | trim != ''
+

@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:13
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cachet
+      POSTGRES_PASSWORD: "{{ cachet_db_password }}"
+      POSTGRES_DB: cachet
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cachet -d cachet"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  cachet:
+    image: linuxserver/cachet
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "UTC"
+      DB_DRIVER: "pgsql"
+      DB_HOST: "postgres"             # <-- matches your service name
+      DB_DATABASE: "cachet"
+      DB_USERNAME: "cachet"
+      DB_PASSWORD: "{{ cachet_db_password }}"
+      APP_URL: "http://localhost:8080"
+      {% if cachet_app_key is defined and cachet_app_key|trim != '' %}
+      APP_KEY: "{{ cachet_app_key }}"  # only set if provided
+      {% endif %}
+    ports:
+      - "8080:8000"                    # host 8080 -> container 8000
+    volumes:
+      - cachet_data:/config            # linuxserver uses /config
+
+volumes:
+  db_data:
+  cachet_data:
+
